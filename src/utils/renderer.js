@@ -3,13 +3,6 @@ const { ipcRenderer } = require('electron');
 
 let mediaStream = null;
 let screenshotInterval = null;
-let audioContext = null;
-let audioProcessor = null;
-let micAudioProcessor = null;
-let audioBuffer = [];
-const SAMPLE_RATE = 24000;
-const AUDIO_CHUNK_DURATION = 0.1; // seconds
-const BUFFER_SIZE = 4096; // Increased buffer size for smoother audio
 
 let hiddenVideo = null;
 let offscreenCanvas = null;
@@ -118,25 +111,7 @@ function cheddarElement() {
     return document.getElementById('cheddar');
 }
 
-function convertFloat32ToInt16(float32Array) {
-    const int16Array = new Int16Array(float32Array.length);
-    for (let i = 0; i < float32Array.length; i++) {
-        // Improved scaling to prevent clipping
-        const s = Math.max(-1, Math.min(1, float32Array[i]));
-        int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-    }
-    return int16Array;
-}
-
-function arrayBufferToBase64(buffer) {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
-}
+// Audio utility functions removed - no longer needed
 
 async function initializeGemini(profile = 'interview', language = 'en-US') {
     const apiKey = localStorage.getItem('apiKey')?.trim();
@@ -172,88 +147,22 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     console.log('🎯 Token tracker reset for new capture session');
 
     try {
-        if (isMacOS) {
-            // On macOS, use SystemAudioDump for audio and getDisplayMedia for screen
-            console.log('Starting macOS capture with SystemAudioDump...');
+        // Get screen capture for screenshots only (no audio)
+        console.log('Starting screen capture...');
 
-            // Start macOS audio capture
-            const audioResult = await ipcRenderer.invoke('start-macos-audio');
-            if (!audioResult.success) {
-                throw new Error('Failed to start macOS audio capture: ' + audioResult.error);
-            }
+        mediaStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                frameRate: 1,
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+            },
+            audio: false, // No audio capture needed
+        });
 
-            // Get screen capture for screenshots
-            mediaStream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    frameRate: 1,
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                },
-                audio: false, // Don't use browser audio on macOS
-            });
-
-            console.log('macOS screen capture started - audio handled by SystemAudioDump');
-        } else if (isLinux) {
-            // Linux - use display media for screen capture and getUserMedia for microphone
-            mediaStream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    frameRate: 1,
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                },
-                audio: false, // Don't use system audio loopback on Linux
-            });
-
-            // Get microphone input for Linux
-            let micStream = null;
-            try {
-                micStream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        sampleRate: SAMPLE_RATE,
-                        channelCount: 1,
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                    },
-                    video: false,
-                });
-
-                console.log('Linux microphone capture started');
-
-                // Setup audio processing for microphone on Linux
-                setupLinuxMicProcessing(micStream);
-            } catch (micError) {
-                console.warn('Failed to get microphone access on Linux:', micError);
-                // Continue without microphone if permission denied
-            }
-
-            console.log('Linux screen capture started');
-        } else {
-            // Windows - use display media with loopback for system audio
-            mediaStream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    frameRate: 1,
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                },
-                audio: {
-                    sampleRate: SAMPLE_RATE,
-                    channelCount: 1,
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                },
-            });
-
-            console.log('Windows capture started with loopback audio');
-
-            // Setup audio processing for Windows loopback audio only
-            setupWindowsLoopbackProcessing();
-        }
+        console.log('Screen capture started');
 
         console.log('MediaStream obtained:', {
             hasVideo: mediaStream.getVideoTracks().length > 0,
-            hasAudio: mediaStream.getAudioTracks().length > 0,
             videoTrack: mediaStream.getVideoTracks()[0]?.getSettings(),
         });
 
@@ -274,68 +183,7 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
     }
 }
 
-function setupLinuxMicProcessing(micStream) {
-    // Setup microphone audio processing for Linux
-    const micAudioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
-    const micSource = micAudioContext.createMediaStreamSource(micStream);
-    const micProcessor = micAudioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
-
-    let audioBuffer = [];
-    const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
-
-    micProcessor.onaudioprocess = async e => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioBuffer.push(...inputData);
-
-        // Process audio in chunks
-        while (audioBuffer.length >= samplesPerChunk) {
-            const chunk = audioBuffer.splice(0, samplesPerChunk);
-            const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
-
-            await ipcRenderer.invoke('send-audio-content', {
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            });
-        }
-    };
-
-    micSource.connect(micProcessor);
-    micProcessor.connect(micAudioContext.destination);
-
-    // Store processor reference for cleanup
-    audioProcessor = micProcessor;
-}
-
-function setupWindowsLoopbackProcessing() {
-    // Setup audio processing for Windows loopback audio only
-    audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
-    const source = audioContext.createMediaStreamSource(mediaStream);
-    audioProcessor = audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1);
-
-    let audioBuffer = [];
-    const samplesPerChunk = SAMPLE_RATE * AUDIO_CHUNK_DURATION;
-
-    audioProcessor.onaudioprocess = async e => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        audioBuffer.push(...inputData);
-
-        // Process audio in chunks
-        while (audioBuffer.length >= samplesPerChunk) {
-            const chunk = audioBuffer.splice(0, samplesPerChunk);
-            const pcmData16 = convertFloat32ToInt16(chunk);
-            const base64Data = arrayBufferToBase64(pcmData16.buffer);
-
-            await ipcRenderer.invoke('send-audio-content', {
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            });
-        }
-    };
-
-    source.connect(audioProcessor);
-    audioProcessor.connect(audioContext.destination);
-}
+// Audio processing functions removed - app now focuses only on screenshot-based Q&A
 
 async function captureScreenshot(imageQuality = 'medium', isManual = false) {
     console.log(`Capturing ${isManual ? 'manual' : 'automated'} screenshot...`);
@@ -439,9 +287,93 @@ async function captureScreenshot(imageQuality = 'medium', isManual = false) {
 }
 
 async function captureManualScreenshot(imageQuality = null) {
-    console.log('Manual screenshot triggered');
+    console.log('Manual screenshot triggered - requesting fresh screen capture');
     const quality = imageQuality || currentImageQuality;
-    await captureScreenshot(quality, true); // Pass true for isManual
+
+    // Add timestamp to ensure we're getting fresh captures
+    const timestamp = Date.now();
+    console.log(`🔄 Starting fresh screen capture at ${timestamp}`);
+
+    try {
+        // Request a fresh screen capture to ensure we get the current active window
+        const freshMediaStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                frameRate: 1,
+                width: { ideal: 1920 },
+                height: { ideal: 1080 },
+            },
+            audio: false, // No audio needed for manual screenshots
+        });
+
+        console.log(`✅ Fresh screen capture obtained for manual screenshot at ${timestamp}`);
+
+        // Create temporary video element for the fresh capture
+        const tempVideo = document.createElement('video');
+        tempVideo.style.display = 'none';
+        tempVideo.muted = true;
+        tempVideo.autoplay = true;
+        tempVideo.playsInline = true;
+        document.body.appendChild(tempVideo);
+
+        tempVideo.srcObject = freshMediaStream;
+
+        // Wait for video to be ready
+        await new Promise((resolve, reject) => {
+            tempVideo.onloadedmetadata = () => {
+                tempVideo.play().then(resolve).catch(reject);
+            };
+            tempVideo.onerror = reject;
+        });
+
+        // Create temporary canvas for capture
+        const tempCanvas = document.createElement('canvas');
+        const tempContext = tempCanvas.getContext('2d');
+
+        tempCanvas.width = tempVideo.videoWidth || 1920;
+        tempCanvas.height = tempVideo.videoHeight || 1080;
+
+        // Draw the current frame
+        tempContext.drawImage(tempVideo, 0, 0, tempCanvas.width, tempCanvas.height);
+
+        // Convert to blob and send
+        tempCanvas.toBlob(
+            async blob => {
+                const reader = new FileReader();
+                reader.onloadend = async () => {
+                    const base64data = reader.result.split(',')[1];
+
+                    if (!base64data || base64data.length < 100) {
+                        console.error('Invalid base64 data generated from manual screenshot');
+                        return;
+                    }
+
+                    const result = await ipcRenderer.invoke('send-image-content', {
+                        data: base64data,
+                    });
+
+                    if (result.success) {
+                        const imageTokens = tokenTracker.calculateImageTokens(tempCanvas.width, tempCanvas.height);
+                        tokenTracker.addTokens(imageTokens, 'image');
+                        console.log(`📊 Manual screenshot sent successfully - ${imageTokens} tokens used (${tempCanvas.width}x${tempCanvas.height})`);
+                    } else {
+                        console.error('Failed to send manual screenshot:', result.error);
+                    }
+                };
+                reader.readAsDataURL(blob);
+            },
+            'image/jpeg',
+            quality === 'high' ? 0.9 : quality === 'medium' ? 0.7 : 0.5
+        );
+
+        // Clean up temporary elements
+        freshMediaStream.getTracks().forEach(track => track.stop());
+        tempVideo.remove();
+
+    } catch (error) {
+        console.error('Error capturing manual screenshot:', error);
+        // Fallback to original method if fresh capture fails
+        await captureScreenshot(quality, true);
+    }
 }
 
 // Expose functions to global scope for external access
@@ -453,26 +385,9 @@ function stopCapture() {
         screenshotInterval = null;
     }
 
-    if (audioProcessor) {
-        audioProcessor.disconnect();
-        audioProcessor = null;
-    }
-
-    if (audioContext) {
-        audioContext.close();
-        audioContext = null;
-    }
-
     if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
         mediaStream = null;
-    }
-
-    // Stop macOS audio capture if running
-    if (isMacOS) {
-        ipcRenderer.invoke('stop-macos-audio').catch(err => {
-            console.error('Error stopping macOS audio:', err);
-        });
     }
 
     // Clean up hidden elements
@@ -597,6 +512,8 @@ ipcRenderer.on('save-conversation-turn', async (event, data) => {
         console.error('Error saving conversation session:', error);
     }
 });
+
+// Audio control functions removed - app now focuses only on screenshot-based Q&A
 
 // Initialize conversation storage when renderer loads
 initConversationStorage().catch(console.error);

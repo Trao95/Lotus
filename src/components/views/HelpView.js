@@ -248,6 +248,7 @@ export class HelpView extends LitElement {
             toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
             manualScreenshot: isMac ? 'Cmd+Shift+S' : 'Ctrl+Shift+S',
+            exitApp: isMac ? 'Cmd+Q' : 'Ctrl+Q',
             previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
         };
@@ -388,7 +389,7 @@ export class HelpView extends LitElement {
                             <strong>Click-through Mode:</strong> Use ${this.formatKeybind(this.keybinds.toggleClickThrough)} to make the window
                             click-through
                         </div>
-                        <div class="usage-step"><strong>Get AI Help:</strong> The AI will analyze your screen and audio to provide assistance</div>
+                        <div class="usage-step"><strong>Get AI Help:</strong> The AI will analyze your screen to provide assistance</div>
                         <div class="usage-step"><strong>Text Messages:</strong> Type questions or requests to the AI using the text input</div>
                         <div class="usage-step"><strong>Navigate Responses:</strong> Use ${this.formatKeybind(this.keybinds.previousResponse)} and ${this.formatKeybind(this.keybinds.nextResponse)} to browse through AI responses</div>
                     </div>
@@ -424,9 +425,9 @@ export class HelpView extends LitElement {
 
                 <div class="option-group">
                     <div class="option-label">
-                        <span>Audio Input</span>
+                        <span>Screenshot Analysis</span>
                     </div>
-                    <div class="description">The AI listens to conversations and provides contextual assistance based on what it hears.</div>
+                    <div class="description">The AI analyzes screenshots to answer questions and provide assistance based on what it sees on your screen.</div>
                 </div>
             </div>
         `;

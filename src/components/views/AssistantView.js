@@ -163,44 +163,46 @@ export class AssistantView extends LitElement {
             background: var(--scrollbar-thumb-hover);
         }
 
-        .text-input-container {
+        .controls-container {
             display: flex;
-            gap: 10px;
-            margin-top: 10px;
             align-items: center;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .text-input-container input {
-            flex: 1;
-            background: var(--input-background);
+        .control-button {
+            background: rgba(255, 255, 255, 0.05);
             color: var(--text-color);
-            border: 1px solid var(--button-border);
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            min-width: 120px;
+            justify-content: center;
         }
 
-        .text-input-container input:focus {
-            outline: none;
-            border-color: var(--focus-border-color);
-            box-shadow: 0 0 0 3px var(--focus-box-shadow);
-            background: var(--input-focus-background);
+        .control-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
         }
 
-        .text-input-container input::placeholder {
-            color: var(--placeholder-color);
-        }
-
-        .text-input-container button {
-            background: transparent;
-            color: var(--start-button-background);
-            border: none;
-            padding: 0;
-            border-radius: 100px;
-        }
-
-        .text-input-container button:hover {
-            background: var(--text-input-button-hover);
+        .control-button.active {
+            background: rgba(76, 175, 80, 0.2);
+            border-color: rgba(76, 175, 80, 0.4);
+            color: #4CAF50;
         }
 
         .nav-button {
@@ -242,7 +244,7 @@ export class AssistantView extends LitElement {
         responses: { type: Array },
         currentResponseIndex: { type: Number },
         selectedProfile: { type: String },
-        onSendText: { type: Function },
+        onTakeScreenshot: { type: Function },
     };
 
     constructor() {
@@ -250,7 +252,7 @@ export class AssistantView extends LitElement {
         this.responses = [];
         this.currentResponseIndex = -1;
         this.selectedProfile = 'interview';
-        this.onSendText = () => {};
+        this.onTakeScreenshot = () => {};
     }
 
     getProfileNames() {
@@ -260,6 +262,7 @@ export class AssistantView extends LitElement {
             meeting: 'Business Meeting',
             presentation: 'Presentation',
             negotiation: 'Negotiation',
+            exam: 'Exam/Test',
         };
     }
 
@@ -357,21 +360,7 @@ export class AssistantView extends LitElement {
         }
     }
 
-    async handleSendText() {
-        const textInput = this.shadowRoot.querySelector('#textInput');
-        if (textInput && textInput.value.trim()) {
-            const message = textInput.value.trim();
-            textInput.value = ''; // Clear input
-            await this.onSendText(message);
-        }
-    }
 
-    handleTextKeydown(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            this.handleSendText();
-        }
-    }
 
     scrollToBottom() {
         setTimeout(() => {
@@ -432,8 +421,6 @@ export class AssistantView extends LitElement {
                 </button>
 
                 ${this.responses.length > 0 ? html` <span class="response-counter">${responseCounter}</span> ` : ''}
-
-                <input type="text" id="textInput" placeholder="Type a message to the AI..." @keydown=${this.handleTextKeydown} />
 
                 <button class="nav-button" @click=${this.navigateToNextResponse} ?disabled=${this.currentResponseIndex >= this.responses.length - 1}>
                     <?xml version="1.0" encoding="UTF-8"?><svg

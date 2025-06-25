@@ -139,6 +139,7 @@ export class CheatingDaddyApp extends LitElement {
         this.currentResponseIndex = -1;
         this._viewInstances = new Map();
         this._isClickThrough = false;
+        this.isAudioListening = false;
 
         // Apply layout mode to document root
         this.updateLayoutMode();
@@ -158,6 +159,9 @@ export class CheatingDaddyApp extends LitElement {
             });
             ipcRenderer.on('click-through-toggled', (_, isEnabled) => {
                 this._isClickThrough = isEnabled;
+            });
+            ipcRenderer.on('toggle-audio', () => {
+                this.handleToggleAudio();
             });
         }
     }
@@ -220,10 +224,11 @@ export class CheatingDaddyApp extends LitElement {
                 window.cheddar.stopCapture();
             }
 
-            // Close the session
+            // Close the session and disable stealth mode
             if (window.require) {
                 const { ipcRenderer } = window.require('electron');
                 await ipcRenderer.invoke('close-session');
+                await ipcRenderer.invoke('disable-stealth-mode');
             }
             this.sessionActive = false;
             this.currentView = 'main';
@@ -255,12 +260,18 @@ export class CheatingDaddyApp extends LitElement {
         this.currentResponseIndex = -1;
         this.startTime = Date.now();
         this.currentView = 'assistant';
+
+        // Enable stealth mode when session starts
+        if (window.require) {
+            const { ipcRenderer } = window.require('electron');
+            await ipcRenderer.invoke('enable-stealth-mode');
+        }
     }
 
     async handleAPIKeyHelp() {
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
-            await ipcRenderer.invoke('open-external', 'https://cheatingdaddy.com/help/api-key');
+            await ipcRenderer.invoke('open-external', 'https://aistudio.google.com/apikey');
         }
     }
 
@@ -300,17 +311,12 @@ export class CheatingDaddyApp extends LitElement {
         }
     }
 
-    // Assistant view event handlers
-    async handleSendText(message) {
-        if (window.cheddar) {
-            const result = await window.cheddar.sendTextMessage(message);
+    // Audio functionality removed - app now focuses only on screenshot-based Q&A
 
-            if (!result.success) {
-                console.error('Failed to send message:', result.error);
-                this.setStatus('Error sending message: ' + result.error);
-            } else {
-                this.setStatus('Message sent...');
-            }
+    async handleTakeScreenshot() {
+        if (window.captureManualScreenshot) {
+            await window.captureManualScreenshot();
+            this.setStatus('Screenshot captured...');
         }
     }
 
@@ -414,7 +420,8 @@ export class CheatingDaddyApp extends LitElement {
                         .responses=${this.responses}
                         .currentResponseIndex=${this.currentResponseIndex}
                         .selectedProfile=${this.selectedProfile}
-                        .onSendText=${message => this.handleSendText(message)}
+                        // Audio functionality removed - app now focuses only on screenshot-based Q&A
+                        .onTakeScreenshot=${() => this.handleTakeScreenshot()}
                         @response-index-changed=${this.handleResponseIndexChanged}
                     ></assistant-view>
                 `;
@@ -482,4 +489,4 @@ export class CheatingDaddyApp extends LitElement {
     }
 }
 
-customElements.define('cheating-daddy-app', CheatingDaddyApp);
+customElements.define('lotus-app', CheatingDaddyApp);

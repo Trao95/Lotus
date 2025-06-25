@@ -446,6 +446,11 @@ export class CustomizeView extends LitElement {
                 name: 'Negotiation',
                 description: 'Guidance for business negotiations and deals',
             },
+            {
+                value: 'exam',
+                name: 'Exam/Test',
+                description: 'Answer all questions on screen with detailed explanations',
+            },
         ];
     }
 
@@ -491,6 +496,7 @@ export class CustomizeView extends LitElement {
             meeting: 'Business Meeting',
             presentation: 'Presentation',
             negotiation: 'Negotiation',
+            exam: 'Exam/Test',
         };
     }
 
@@ -538,6 +544,8 @@ export class CustomizeView extends LitElement {
             toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
             nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
             manualScreenshot: isMac ? 'Cmd+Shift+S' : 'Ctrl+Shift+S',
+            toggleAudio: isMac ? 'Cmd+Shift+A' : 'Ctrl+Shift+A',
+            exitApp: isMac ? 'Cmd+Q' : 'Ctrl+Q',
             previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
         };
@@ -621,6 +629,11 @@ export class CustomizeView extends LitElement {
                 key: 'manualScreenshot',
                 name: 'Manual Screenshot',
                 description: 'Take a manual screenshot for AI analysis',
+            },
+            {
+                key: 'exitApp',
+                name: 'Exit Application',
+                description: 'Close the application (works in stealth mode)',
             },
             {
                 key: 'previousResponse',

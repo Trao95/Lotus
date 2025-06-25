@@ -6,12 +6,12 @@
 > [!NOTE]  
 > During testing it wont answer if you ask something, you need to simulate interviewer asking question, which it will answer
 
-A real-time AI assistant that provides contextual help during video calls, interviews, presentations, and meetings using screen capture and audio analysis.
+A real-time AI assistant that provides contextual help during video calls, interviews, presentations, and meetings using screen capture analysis.
 
 ## Features
 
 - **Live AI Assistance**: Real-time help powered by Google Gemini 2.0 Flash Live
-- **Screen & Audio Capture**: Analyzes what you see and hear for contextual responses
+- **Screen Capture**: Analyzes what you see for contextual responses
 - **Multiple Profiles**: Interview, Sales Call, Business Meeting, Presentation, Negotiation
 - **Transparent Overlay**: Always-on-top window that can be positioned anywhere
 - **Click-through Mode**: Make window transparent to clicks when needed
@@ -29,7 +29,7 @@ A real-time AI assistant that provides contextual help during video calls, inter
 2. Choose your profile and language in settings
 3. Click "Start Session" to begin
 4. Position the window using keyboard shortcuts
-5. The AI will provide real-time assistance based on your screen and what interview asks
+5. The AI will provide real-time assistance based on your screen content
 
 ## Keyboard Shortcuts
 
@@ -38,11 +38,9 @@ A real-time AI assistant that provides contextual help during video calls, inter
 - **Close/Back**: `Ctrl/Cmd + \` - Close window or go back
 - **Send Message**: `Enter` - Send text to AI
 
-## Audio Capture
+## Screen Capture
 
-- **macOS**: [SystemAudioDump](https://github.com/Mohammed-Yasin-Mulla/Sound) for system audio
-- **Windows**: Loopback audio capture
-- **Linux**: Microphone input
+- **All Platforms**: Screenshot-based analysis for answering questions and providing assistance
 
 ## Requirements
 

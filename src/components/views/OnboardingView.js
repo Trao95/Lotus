@@ -250,9 +250,9 @@ export class OnboardingView extends LitElement {
         return html`
             <div class="slide slide-1 ${this.currentSlide === 0 ? 'active' : ''}">
                 <div class="emoji">👋</div>
-                <div class="slide-title">Welcome to Cheating Daddy!</div>
+                <div class="slide-title">Welcome to Lotus!</div>
                 <div class="slide-content">
-                    Cheating Daddy hears what you hear and sees what you see, then generates AI-powered suggestions without any user input needed.
+                    Lotus hears what you hear and sees what you see, then generates AI-powered suggestions without any user input needed.
                 </div>
             </div>
         `;

@@ -8,13 +8,10 @@ const fs = require('node:fs');
 const { GoogleGenAI } = require('@google/genai');
 const os = require('os');
 const { spawn } = require('child_process');
-const { pcmToWav, analyzeAudioBuffer, saveDebugAudio } = require('./audioUtils');
-const { getSystemPrompt } = require('./utils/prompts');
+// Audio utilities removed - app now focuses only on screenshot-based Q&A
+const { getCustomSystemPrompt } = require('./utils/custom-prompts');
 
 let geminiSession = null;
-let loopbackProc = null;
-let systemAudioProc = null;
-let audioIntervalTimer = null;
 let mouseEventsIgnored = false;
 let messageBuffer = '';
 let isInitializingSession = false;
@@ -118,6 +115,16 @@ function createWindow() {
     mainWindow.setContentProtection(true);
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
+    // Additional stealth settings
+    if (process.platform === 'win32') {
+        // Prevent window from stealing focus on Windows
+        mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+        mainWindow.setSkipTaskbar(true);
+    } else if (process.platform === 'darwin') {
+        // macOS specific settings
+        mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    }
+
     // Center window at the top of the screen
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width: screenWidth } = primaryDisplay.workAreaSize;
@@ -125,9 +132,7 @@ function createWindow() {
     const y = 0; // Or a small offset like 10, 20 if needed
     mainWindow.setPosition(x, y);
 
-    if (process.platform === 'win32') {
-        mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
-    }
+
 
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
@@ -191,6 +196,8 @@ function getDefaultKeybinds() {
         toggleClickThrough: isMac ? 'Cmd+M' : 'Ctrl+M',
         nextStep: isMac ? 'Cmd+Enter' : 'Ctrl+Enter',
         manualScreenshot: isMac ? 'Cmd+Shift+S' : 'Ctrl+Shift+S',
+        toggleAudio: isMac ? 'Cmd+Shift+A' : 'Ctrl+Shift+A',
+        exitApp: isMac ? 'Cmd+Q' : 'Ctrl+Q',
         previousResponse: isMac ? 'Cmd+[' : 'Ctrl+[',
         nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
     };
@@ -250,7 +257,12 @@ function updateGlobalShortcuts(keybinds, mainWindow) {
                 if (mainWindow.isVisible()) {
                     mainWindow.hide();
                 } else {
-                    mainWindow.show();
+                    // Check if stealth mode is active
+                    if (mainWindow.webContents && mainWindow.webContents.isStealthMode) {
+                        mainWindow.showInactive();
+                    } else {
+                        mainWindow.show();
+                    }
                 }
             });
             console.log(`Registered toggleVisibility: ${keybinds.toggleVisibility}`);
@@ -306,9 +318,16 @@ function updateGlobalShortcuts(keybinds, mainWindow) {
         try {
             globalShortcut.register(keybinds.manualScreenshot, () => {
                 console.log('Manual screenshot shortcut triggered');
+
+                // Don't bring app window to front - capture whatever is currently active
+                // Execute screenshot capture immediately
                 mainWindow.webContents.executeJavaScript(`
                     if (window.captureManualScreenshot) {
-                        window.captureManualScreenshot();
+                        window.captureManualScreenshot().then(() => {
+                            console.log('Manual screenshot completed');
+                        }).catch(err => {
+                            console.error('Manual screenshot failed:', err);
+                        });
                     } else {
                         console.log('Manual screenshot function not available');
                     }
@@ -345,6 +364,21 @@ function updateGlobalShortcuts(keybinds, mainWindow) {
             console.error(`Failed to register nextResponse (${keybinds.nextResponse}):`, error);
         }
     }
+
+    // Audio toggle removed - app now focuses only on screenshot-based Q&A
+
+    // Register exit app shortcut
+    if (keybinds.exitApp) {
+        try {
+            globalShortcut.register(keybinds.exitApp, () => {
+                console.log('Exit app shortcut triggered');
+                app.quit();
+            });
+            console.log(`Registered exitApp: ${keybinds.exitApp}`);
+        } catch (error) {
+            console.error(`Failed to register exitApp (${keybinds.exitApp}):`, error);
+        }
+    }
 }
 
 async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'interview', language = 'en-US') {
@@ -361,11 +395,11 @@ async function initializeGeminiSession(apiKey, customPrompt = '', profile = 'int
         apiKey: apiKey,
     });
 
-    // Get enabled tools first to determine Google Search status
+    // Get enabled tools for Gemini configuration
     const enabledTools = await getEnabledTools();
-    const googleSearchEnabled = enabledTools.some(tool => tool.googleSearch);
 
-    const systemPrompt = getSystemPrompt(profile, customPrompt, googleSearchEnabled);
+    // Use custom prompts directly - all profiles now use custom-prompts.js
+    const systemPrompt = getCustomSystemPrompt('exam', language);
 
     // Initialize new conversation session
     initializeNewSession();
@@ -501,160 +535,20 @@ async function getStoredSetting(key, defaultValue) {
     return defaultValue;
 }
 
-function killExistingSystemAudioDump() {
-    return new Promise(resolve => {
-        console.log('Checking for existing SystemAudioDump processes...');
+// macOS audio functions removed - app now focuses only on screenshot-based Q&A
 
-        // Kill any existing SystemAudioDump processes
-        const killProc = spawn('pkill', ['-f', 'SystemAudioDump'], {
-            stdio: 'ignore',
-        });
-
-        killProc.on('close', code => {
-            if (code === 0) {
-                console.log('Killed existing SystemAudioDump processes');
-            } else {
-                console.log('No existing SystemAudioDump processes found');
-            }
-            resolve();
-        });
-
-        killProc.on('error', err => {
-            console.log('Error checking for existing processes (this is normal):', err.message);
-            resolve();
-        });
-
-        // Timeout after 2 seconds
-        setTimeout(() => {
-            killProc.kill();
-            resolve();
-        }, 2000);
-    });
-}
-
-async function startMacOSAudioCapture() {
-    if (process.platform !== 'darwin') return false;
-
-    // Kill any existing SystemAudioDump processes first
-    await killExistingSystemAudioDump();
-
-    console.log('Starting macOS audio capture with SystemAudioDump...');
-
-    let systemAudioPath;
-    if (app.isPackaged) {
-        systemAudioPath = path.join(process.resourcesPath, 'SystemAudioDump');
-    } else {
-        systemAudioPath = path.join(__dirname, 'assets', 'SystemAudioDump');
-    }
-
-    console.log('SystemAudioDump path:', systemAudioPath);
-
-    systemAudioProc = spawn(systemAudioPath, [], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    if (!systemAudioProc.pid) {
-        console.error('Failed to start SystemAudioDump');
-        return false;
-    }
-
-    console.log('SystemAudioDump started with PID:', systemAudioProc.pid);
-
-    const CHUNK_DURATION = 0.1;
-    const SAMPLE_RATE = 24000;
-    const BYTES_PER_SAMPLE = 2;
-    const CHANNELS = 2;
-    const CHUNK_SIZE = SAMPLE_RATE * BYTES_PER_SAMPLE * CHANNELS * CHUNK_DURATION;
-
-    let audioBuffer = Buffer.alloc(0);
-
-    systemAudioProc.stdout.on('data', data => {
-        audioBuffer = Buffer.concat([audioBuffer, data]);
-
-        while (audioBuffer.length >= CHUNK_SIZE) {
-            const chunk = audioBuffer.slice(0, CHUNK_SIZE);
-            audioBuffer = audioBuffer.slice(CHUNK_SIZE);
-
-            const monoChunk = CHANNELS === 2 ? convertStereoToMono(chunk) : chunk;
-            const base64Data = monoChunk.toString('base64');
-            sendAudioToGemini(base64Data);
-
-            if (process.env.DEBUG_AUDIO) {
-                console.log(`Processed audio chunk: ${chunk.length} bytes`);
-                saveDebugAudio(monoChunk, 'system_audio');
-            }
-        }
-
-        const maxBufferSize = SAMPLE_RATE * BYTES_PER_SAMPLE * 1;
-        if (audioBuffer.length > maxBufferSize) {
-            audioBuffer = audioBuffer.slice(-maxBufferSize);
-        }
-    });
-
-    systemAudioProc.stderr.on('data', data => {
-        console.error('SystemAudioDump stderr:', data.toString());
-    });
-
-    systemAudioProc.on('close', code => {
-        console.log('SystemAudioDump process closed with code:', code);
-        systemAudioProc = null;
-    });
-
-    systemAudioProc.on('error', err => {
-        console.error('SystemAudioDump process error:', err);
-        systemAudioProc = null;
-    });
-
-    return true;
-}
-
-function convertStereoToMono(stereoBuffer) {
-    const samples = stereoBuffer.length / 4;
-    const monoBuffer = Buffer.alloc(samples * 2);
-
-    for (let i = 0; i < samples; i++) {
-        const leftSample = stereoBuffer.readInt16LE(i * 4);
-        monoBuffer.writeInt16LE(leftSample, i * 2);
-    }
-
-    return monoBuffer;
-}
-
-function stopMacOSAudioCapture() {
-    if (systemAudioProc) {
-        console.log('Stopping SystemAudioDump...');
-        systemAudioProc.kill('SIGTERM');
-        systemAudioProc = null;
-    }
-}
-
-async function sendAudioToGemini(base64Data) {
-    if (!geminiSession) return;
-
-    try {
-        process.stdout.write('.');
-        await geminiSession.sendRealtimeInput({
-            audio: {
-                data: base64Data,
-                mimeType: 'audio/pcm;rate=24000',
-            },
-        });
-    } catch (error) {
-        console.error('Error sending audio to Gemini:', error);
-    }
-}
+// All audio capture functions removed - app now focuses only on screenshot-based Q&A
 
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
-    stopMacOSAudioCapture();
     if (process.platform !== 'darwin') {
         app.quit();
     }
 });
 
 app.on('before-quit', () => {
-    stopMacOSAudioCapture();
+    // App cleanup - audio functions removed
 });
 
 app.on('activate', () => {
@@ -667,19 +561,7 @@ ipcMain.handle('initialize-gemini', async (event, apiKey, customPrompt, profile 
     return await initializeGeminiSession(apiKey, customPrompt, profile, language);
 });
 
-ipcMain.handle('send-audio-content', async (event, { data, mimeType }) => {
-    if (!geminiSession) return { success: false, error: 'No active Gemini session' };
-    try {
-        process.stdout.write('.');
-        await geminiSession.sendRealtimeInput({
-            audio: { data: data, mimeType: mimeType },
-        });
-        return { success: true };
-    } catch (error) {
-        console.error('Error sending audio:', error);
-        return { success: false, error: error.message };
-    }
-});
+// Audio IPC handlers removed - app now focuses only on screenshot-based Q&A
 
 ipcMain.handle('send-image-content', async (event, { data, debug }) => {
     if (!geminiSession) return { success: false, error: 'No active Gemini session' };
@@ -799,12 +681,53 @@ ipcMain.handle('toggle-window-visibility', async event => {
             if (mainWindow.isVisible()) {
                 mainWindow.hide();
             } else {
-                mainWindow.show();
+                // Check if stealth mode is active
+                if (mainWindow.webContents && mainWindow.webContents.isStealthMode) {
+                    mainWindow.showInactive();
+                } else {
+                    mainWindow.show();
+                }
             }
         }
         return { success: true };
     } catch (error) {
         console.error('Error toggling window visibility:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('enable-stealth-mode', async event => {
+    try {
+        const windows = BrowserWindow.getAllWindows();
+        if (windows.length > 0) {
+            const mainWindow = windows[0];
+            // Mark stealth mode as active
+            mainWindow.webContents.isStealthMode = true;
+            // Restore stealth behavior - prevent focus stealing
+            mainWindow.setFocusable(false);
+            console.log('Stealth mode enabled - window is now non-focusable');
+        }
+        return { success: true };
+    } catch (error) {
+        console.error('Error enabling stealth mode:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('disable-stealth-mode', async event => {
+    try {
+        const windows = BrowserWindow.getAllWindows();
+        if (windows.length > 0) {
+            const mainWindow = windows[0];
+            // Mark stealth mode as inactive
+            mainWindow.webContents.isStealthMode = false;
+            // Ensure window is focusable again
+            mainWindow.setFocusable(true);
+            console.log('Stealth mode disabled');
+        }
+        return { success: true };
+    } catch (error) {
+        console.error('Error disabling stealth mode:', error);
         return { success: false, error: error.message };
     }
 });
@@ -840,6 +763,8 @@ ipcMain.handle('update-google-search-setting', async (event, enabled) => {
         return { success: false, error: error.message };
     }
 });
+
+// Audio control IPC handlers removed - app now focuses only on screenshot-based Q&A
 
 // Add layout mode handler
 ipcMain.handle('update-layout-mode', async (event, layoutMode) => {
